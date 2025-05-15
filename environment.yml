@@ -34,4 +34,3 @@ dependencies:
   - scipy=1.15.2=py313h86fcf2b_0
   - tk=8.6.13=noxft_h4845f30_101
   - tzdata=2025b=h78e105d_0
-prefix: /home/jforstater/miniforge3/envs/sdp
