@@ -64,7 +64,7 @@ def approx_min_evec(M_data, M_shape, M_mv, q, eps=1e-10):
     v_old = np.zeros(n)
 
     for i in range(min(q, n-1)):
-        v_sum = u[i]*v
+        v_sum = v_sum + u[i]*v
         v, v_old = M_mv( M_data, v ) - omega[i+1]*v - rho[i]*v_old, v
         if rho[i+1] < eps:
             break
