@@ -4,9 +4,6 @@ import numpy as np
 
 np.set_printoptions(precision=3, suppress=True)
 
-M_data = np.random.normal(size=(100, 50))
-M_data = M_data @ M_data.T  # Making it symmetric positive definite
-
 def M_shape(M_data):
     """
         M_data: data
@@ -64,7 +61,7 @@ def approx_min_evec(M_data, M_shape, M_mv, q, eps=1e-10):
     v_old = np.zeros(n)
 
     for i in range(min(q, n-1)):
-        v_sum = v_sum + u[i]*v
+        v_sum += u[i]*v
         v, v_old = M_mv( M_data, v ) - omega[i+1]*v - rho[i]*v_old, v
         if rho[i+1] < eps:
             break
@@ -72,18 +69,85 @@ def approx_min_evec(M_data, M_shape, M_mv, q, eps=1e-10):
 
     return v_sum
 
+def nystrom_sketch_init(n, R):
+    """
+        n: int
+            Dimension of input matrix.
+        R: int
+            Size of sketch.
+    """
+    Omega = np.random.normal(size=(n, R))
+    S = np.zeros((n, R))
+    return Omega, S
+
+def nystrom_sketch_rank_one_update(v, eta, S, Omega):
+    """
+        v: vector
+            Update vector.
+        eta: float
+            Step size.
+        S: matrix
+            Sketch matrix.
+        Omega: matrix
+            Random test matrix.
+    """
+    S = (1 - eta)*S + eta * (v @ (v.conj().T @ Omega))
+    return S
+
+def nystrom_sketch_recontruct(n, S, Omega):
+    """
+        n: int
+            Dimension of input matrix.
+        S: matrix
+            Sketch matrix.
+        Omega: matrix
+            Random test matrix.
+    """
+    sigma = np.sqrt(n)*np.finfo(np.float64).eps*np.linalg.norm(S, ord=2)
+    S_sigma = S + sigma * Omega
+    L = np.linalg.cholesky(Omega.conj().T @ S_sigma, upper=True)
+    U, Sigma, _ = np.linalg.svd(np.linalg.solve(L.T, S_sigma.T).T, full_matrices=False)
+    Lambda = np.maximum( 0, np.diag( np.square(Sigma) ) - sigma*np.eye( Sigma.shape[0] ) )
+    return U, Lambda
+
 if __name__ == "__main__":
-    q = 10
-    eps = 1e-10
+    # Test approx_min_evec    
+    # M_data = np.random.normal(size=(100, 50))
+    # M_data = M_data @ M_data.T  # Making it symmetric positive definite
+    
+    # q = 100
+    # eps = 1e-10
 
-    v = approx_min_evec(M_data, M_shape, M_mv, q, eps)
-    print("Approximate minimum eigenvector:", v)
+    # v = approx_min_evec(M_data, M_shape, M_mv, q, eps)
+    # print("Approximate minimum eigenvector:", v)
 
-    xi, u = eigsh(M_data, k=1, which='SM', return_eigenvectors=True)
-    xi = xi[0]
-    u = u[:, 0]
-    print("Exact minimum eigenvector:", u)
+    # xi, u = eigsh(M_data, k=1, which='SM', return_eigenvectors=True)
+    # xi = xi[0]
+    # u = u[:, 0]
+    # print("Exact minimum eigenvector:", u)
 
-    print(abs( (v.T @ M_data @ v)  / np.dot( v, v ) ))
-    print("Error:", abs( np.real( np.dot( v, M_mv( M_data, v ) ) / np.dot( v, v ) ) - xi) )
-    # print(M_data)
+    # print(abs( (v.T @ M_data @ v)  / np.dot( v, v ) ))
+    # print("Error:", abs( np.real( np.dot( v, M_mv( M_data, v ) ) / np.dot( v, v ) ) - xi) )
+    # # print(M_data)
+
+    # Test Nystrom sketch
+    n = 100
+    R = 30
+    Omega, S = nystrom_sketch_init(n, R)
+    L = np.eye(n)
+
+    # Test Single Rank One Update
+    v = L[:, 1]
+    v = v.reshape((-1, 1))
+    eta = 1
+    S = nystrom_sketch_rank_one_update(v, eta, S, Omega)
+    U, Lambda = nystrom_sketch_recontruct(n, S, Omega)
+    X_hat = U @ Lambda @ U.conj().T
+    error = np.linalg.norm(X_hat - v*v.T, ord=2)
+    print("Error:", error)
+
+    # Test Reconstruction
+    U, Lambda = nystrom_sketch_recontruct(n, Omega, Omega)
+    X_hat = U @ Lambda @ U.conj().T
+    error = np.linalg.norm(X_hat - L, ord='nuc')
+    print("Error:", error)
