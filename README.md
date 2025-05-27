@@ -13,3 +13,15 @@ in your project directory. Don't worry, these are already in the .gitignore This
 ```
 conda activate sdp
 ```
+
+To update the environment when the environment.yml file is updated run:
+
+```
+conda env update --file environment.yml  --prune
+```
+
+If you install new packages, you can update the environment.yml file with:
+
+```
+conda env export | grep -v "^prefix: " > environment.yml
+```
