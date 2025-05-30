@@ -1,4 +1,5 @@
 import numpy as np
+import timeit
 import itertools
 
 def embedding_eigenvalues(beta, alpha, d):
@@ -20,9 +21,16 @@ nal matrix Ai"""
             alpha = possible_vectors[j]
             eig = embedding_eigenvalues(beta, alpha, d)
             A[j, k] = eig[0]
-            A[j, 2*k] = eig[1]
+            A[j, k+L] = eig[1]
     return A
 
-A = generate_A(3, 5)
-print(A)
-print(np.shape(A))
+def faster_A(n, d):
+    possible_vectors = itertools.product(range(-d, d + 1), repeat = n)
+    possible = np.array(list(possible_vectors))
+    C = possible @ possible.T
+    C = np.pi * C / (2*d + 1)
+    S = np.sin(C)
+    C = np.cos(C)
+    C = np.concatenate((C, S), 1)
+    return C
+
