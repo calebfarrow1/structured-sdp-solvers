@@ -1,4 +1,5 @@
 import numpy as np
+import timeit
 import itertools
 
 def embedding_eigenvalues(beta, alpha, d):
@@ -20,9 +21,24 @@ def generate_A(n, d):
             alpha = possible_vectors[j]
             eig = embedding_eigenvalues(beta, alpha, d)
             A[j, k] = eig[0]
-            A[j, k + L] = eig[1]
+            A[j, k+L] = eig[1]
     return A
 
+def faster_A(n, d):
+    possible_alpha = itertools.product(range(-d, d + 1), repeat = n)
+    Alpha = np.array(list(possible_alpha), dtype = np.int16)
+    cutoff = ((2 * d + 1) ** n + 1) / 2 
+    Beta = Alpha[int(cutoff):] # cut off all negative betas
+    C = Alpha @ Beta.T 
+    C = np.pi * C / (2 * d + 1)
+    S = np.sin(C)
+    C = np.cos(C)
+    C = np.concatenate((C, S), 1)
+    print(np.shape(C))
+    return C
+
+
+#2d + 1^n by (2d+1)^(n-1)/2
 if __name__ == "__main__":
     # A = generate_A(3, 5)
     # print(A)
