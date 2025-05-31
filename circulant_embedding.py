@@ -48,7 +48,7 @@ if __name__ == "__main__":
     n = 3
     d = 5
 
-    A = generate_A(n, d)
+    A = faster_A(n, d)
     A_0 = np.ones(np.shape(A)[0])
     c = np.random.normal(size=np.shape(A)[1])
     
