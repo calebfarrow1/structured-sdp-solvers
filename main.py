@@ -1,6 +1,8 @@
 from scipy.sparse.linalg import eigsh
 from scipy.sparse import diags
 import numpy as np
+import time
+import math
 # import networkx as nx
 
 np.set_printoptions(precision=3, suppress=True)
@@ -12,7 +14,7 @@ def primitive1(C_data, v):
         v: vector
             Vector to multiply with the matrix C.
     """
-    return C_data @ v
+    return  C_data @ v
 
 def primitive2(A_data, z, u):
     """
@@ -166,7 +168,12 @@ def nystrom_sketch_recontruct(n, S, Omega):
     return U, Lambda
 
 
-def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T):
+def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
+                 enforce_trace=True,
+                 enforce_A_norm=True,
+                 normalize_A=(lambda tensor, scalar : [scalar * matrix for matrix in tensor]),
+                 normalize_b=(lambda tensor, scalar : scalar * tensor),
+                 do_log=False, log_data=[], logging_function=None):
     """
         C: matrix
             Matrix C.
@@ -195,6 +202,13 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T):
     z = np.zeros(d)
     y = np.zeros(d)
 
+    if do_log:
+        epoc = time.time()
+
+    if enforce_A_norm:
+        A = normalize_A(A, 1/A_norm)
+        b = normalize_b(b, 1/A_norm)
+
     for t in range(1, T+1):
         beta = beta0*np.sqrt(t+1)
         eta = 2/(t+1)
@@ -207,10 +221,15 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T):
         gamma = 4*(alpha**2)*beta0*A_norm**2 / ( ( (t+1)**(3/2) )*( np.linalg.norm(z - b, ord=2)**2 ) )
         y = y + gamma*(z - b)
         S = nystrom_sketch_rank_one_update(np.sqrt(alpha)*v, eta, S, Omega)
+        if do_log:
+            log_data.append(
+                logging_function(beta, eta, q, v, z, gamma, y, S, Omega, epoc)
+            )
     
     U, Lambda = nystrom_sketch_recontruct(n, S, Omega)
         
-    # Add code to Enforce trace constraint??
+    if enforce_trace:
+        Lambda += (alpha - Lambda.trace()) * np.eye(R) / R
 
     return U, Lambda
 
@@ -241,9 +260,7 @@ if __name__ == "__main__":
         ai[i] = 1
         A.append(diags(ai))
 
-    C = -diags([2*np.ones(n), -np.ones(n-1), -np.ones(n-1), -1, -1], offsets=[0, -1, 1, -(n-1), n-1])
-
-
+    C = -diags([2*np.ones(n), -np.ones(n-1), -np.ones(n-1), -1, -1], offsets=[0, -1, 1, -(n-1), n-1]) / math.sqrt(6 * n)
 
     d = len(A)
 
@@ -257,15 +274,18 @@ if __name__ == "__main__":
 
     A_norm = np.linalg.norm(Y, ord=2)
 
-    b = np.zeros(n)
+    b = np.ones(n)
 
 
 
-    U, Lambda = sketchy_CGAL(C, A, b, n, d, alpha=n, A_norm=A_norm, R=10, T=100)
+    U, Lambda = sketchy_CGAL(C, A, b, n, d, alpha=n, A_norm=A_norm, R=10, T=10000)
+
+    print(Lambda.diagonal())
 
 
     # Objective Value Using the Sketch
     X_hat = U @ Lambda @ U.conj().T
+    print(X_hat.diagonal())
     calculated_cut = ( X_hat.conj().T @ -C ).trace()
     print("Calculated Objective:", calculated_cut)
 
