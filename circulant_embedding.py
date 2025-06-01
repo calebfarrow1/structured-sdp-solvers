@@ -24,17 +24,29 @@ def generate_A(n, d):
             A[j, k+L] = eig[1]
     return A
 
+# def faster_A(n, d):
+#     possible_alpha = itertools.product(range(-2*d, 2*d + 1), repeat = n)
+#     Alpha = np.array(list(possible_alpha), dtype = np.int16)
+#     cutoff = ((4 * d + 1) ** n + 1) / 2 
+#     Beta = Alpha[int(cutoff):] # cut off all negative betas
+#     C = Alpha @ Beta.T 
+#     C = np.pi * C / (4 * d + 1)
+#     S = np.sin(C)
+#     C = np.cos(C)
+#     C = np.concatenate((C, S), 1)
+#     print(np.shape(C))
+#     return C
+
 def faster_A(n, d):
-    possible_alpha = itertools.product(range(-2*d, 2*d + 1), repeat = n)
+    possible_alpha = itertools.product(range(0, 4 * d + 1), repeat = n)
     Alpha = np.array(list(possible_alpha), dtype = np.int16)
-    cutoff = ((4 * d + 1) ** n + 1) / 2 
-    Beta = Alpha[int(cutoff):] # cut off all negative betas
-    C = Alpha @ Beta.T 
-    C = np.pi * C / (4 * d + 1)
+    possible_beta = itertools.product(range(0, 2 * d + 1), repeat = n)
+    Beta = np.array(list(possible_beta), dtype = np.int16)[1::]
+    C = Alpha @ Beta.T
+    C = 2 * np.pi * C / (4 * d + 1)
     S = np.sin(C)
     C = np.cos(C)
-    C = np.concatenate((C, S), 1)
-    print(np.shape(C))
+    C = 2 * np.concatenate((C, S), 1)
     return C
 
 
