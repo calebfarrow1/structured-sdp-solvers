@@ -57,11 +57,11 @@ if __name__ == "__main__":
     # print(np.shape(A))
 
     from solve_LP import solve_LP
-    n = 1
-    d = 1
+    n = 2
+    d = 3
 
     A = faster_A(n, d)
-    print(A)
+    # print(A)
     A_0 = np.ones(np.shape(A)[0])
     c = np.random.normal(size=np.shape(A)[1])
     

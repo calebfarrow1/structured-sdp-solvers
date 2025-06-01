@@ -1,7 +1,8 @@
 import cvxpy as cp
 import numpy as np
+from scipy.linalg import toeplitz
 
-def LP_from_LMI(A_0, A, c):
+def Formulate_LMI(A_0, A, c):
     """
     Convert a linear matrix inequality (LMI) into a linear program (LP).
     
@@ -17,18 +18,22 @@ def LP_from_LMI(A_0, A, c):
     cp.Problem
         The constructed linear program.
     """
-    n = A.shape[1]  # Number of variables
+    n = len(A)  # Number of variables
     x = cp.Variable(n)
+
+    LA_x = A_0
+    for i in range(n):
+        LA_x = LA_x + A[i] * x[i]
     
     # Construct the LMI constraint
-    constraints = [A_0 + A @ x >= 0]
+    constraints = [LA_x >> 0]
     
     # Objective function
     objective = cp.Minimize(c.T @ x)
     
     return cp.Problem(objective, constraints)
 
-def solve_LP(A_0, A, c, verbose=False):
+def solve_LMI(A_0, A, c, verbose=False):
     """
     Solve the linear program defined by the LMI.
     
@@ -44,24 +49,32 @@ def solve_LP(A_0, A, c, verbose=False):
     tuple
         The status of the problem, optimal value, and optimal variable values.
     """
-    prob = LP_from_LMI(A_0, A, c)
+    prob = Formulate_LMI(A_0, A, c)
     prob.solve(verbose=verbose)  # Set verbose=True for detailed output
     
     return prob.status, prob.value, prob.variables()
 
 if __name__ == "__main__":
-    # Simple example to test the LP solver (Correct answer for optimal variable is [12, 36])
-    # n = 2
-    # A_0 = np.array([18, 9, 9, 0, 0])
-    # A = np.array([[0.3, 0.4], [0.3, 0.15], [0.17, 0.17], [-1, 0], [0, -1]])
-    # c = -np.array([1.9, 2.1])
+    d = 3
 
-    n = 5  # Dimension of the problem
-    A_0 = np.ones(n)
-    A = np.random.normal(size=(n,n))
-    c = np.random.normal(size=n)
+    c = np.zeros(2*d + 1, dtype=complex)
+    c[0] = 1
+    A_0 = toeplitz(c)
+
+    A = []
+
+    for n in range(1, 2*d + 1):
+        c = np.zeros(2*d + 1, dtype=complex)
+        c[n] = 1
+        A.append(toeplitz(c))
+
+        c = np.zeros(2*d + 1, dtype=complex)
+        c[n] = -1j
+        A.append(toeplitz(c))
+
+    c = np.random.normal(size=len(A))
     
-    status, optimal_value, optimal_vars = solve_LP(A_0, A, c)
+    status, optimal_value, optimal_vars = solve_LMI(A_0, A, c)
     
     print("Status:", status)
     print("Optimal Value:", optimal_value)
