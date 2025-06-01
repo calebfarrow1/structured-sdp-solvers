@@ -11,7 +11,7 @@ def generate_A(n, d):
         Toeplitz matrix.
     Output: Array A where each column is a vector corresponding to 
         diagonal matrix Ai"""
-    possible_vectors = list(itertools.product(range(-d, d + 1), repeat =
+    possible_vectors = list(itertools.product(range(-2*d, 2*d + 1), repeat =
  n))
     L = len(possible_vectors)
     A = np.zeros((L, 2*L))
@@ -19,18 +19,18 @@ def generate_A(n, d):
         beta = possible_vectors[k]
         for j in list(range(L)):
             alpha = possible_vectors[j]
-            eig = embedding_eigenvalues(beta, alpha, d)
+            eig = embedding_eigenvalues(beta, alpha, 2*d)
             A[j, k] = eig[0]
             A[j, k+L] = eig[1]
     return A
 
 def faster_A(n, d):
-    possible_alpha = itertools.product(range(-d, d + 1), repeat = n)
+    possible_alpha = itertools.product(range(-2*d, 2*d + 1), repeat = n)
     Alpha = np.array(list(possible_alpha), dtype = np.int16)
-    cutoff = ((2 * d + 1) ** n + 1) / 2 
+    cutoff = ((4 * d + 1) ** n + 1) / 2 
     Beta = Alpha[int(cutoff):] # cut off all negative betas
     C = Alpha @ Beta.T 
-    C = np.pi * C / (2 * d + 1)
+    C = np.pi * C / (4 * d + 1)
     S = np.sin(C)
     C = np.cos(C)
     C = np.concatenate((C, S), 1)
@@ -45,10 +45,11 @@ if __name__ == "__main__":
     # print(np.shape(A))
 
     from solve_LP import solve_LP
-    n = 3
-    d = 5
+    n = 1
+    d = 1
 
     A = faster_A(n, d)
+    print(A)
     A_0 = np.ones(np.shape(A)[0])
     c = np.random.normal(size=np.shape(A)[1])
     

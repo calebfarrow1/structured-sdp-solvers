@@ -21,7 +21,7 @@ def LP_from_LMI(A_0, A, c):
     x = cp.Variable(n)
     
     # Construct the LMI constraint
-    constraints = [A_0 - A @ x >= 0]
+    constraints = [A_0 + A @ x >= 0]
     
     # Objective function
     objective = cp.Minimize(c.T @ x)
