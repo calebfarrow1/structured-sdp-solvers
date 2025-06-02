@@ -5,7 +5,7 @@ from scipy.linalg import toeplitz
 from circulant_embedding import faster_A
 from scipy.linalg import circulant
 from scipy.sparse import diags
-from SCGAL import sketchy_CGAL, primitive3
+from SCGAL import run_solver
 
 if __name__ == '__main__':
     n = 1
@@ -91,15 +91,40 @@ if __name__ == '__main__':
         mx = diags([-1j*diag, 1j*diag],offsets=[-m,m])
         A.append(mx)
 
-    Y = np.zeros((n, d))
+    Y = np.zeros((2*d + 1, len(A)), dtype=complex)
 
-    ## Need to update this so it doesn't produce an error
-    # for i in range(d):
-    #     x = np.zeros(2*d + 1)
-    #     x[i] = 1
-    #     Xi = diags(x)
-    #     Y[i,:] = primitive3(A, Xi)
+    for i in range(2*d + 1):
+        x = np.zeros(2*d + 1)
+        x[i] = 1
+        Xi = diags(x)
+        v = np.zeros(len(A), dtype=complex)
+        for k, a in enumerate(A):
+            v[k] = ( a.conj().T @ Xi ).trace()
+        Y[i,:] = v
 
     # A_norm = np.linalg.norm(Y, ord=2)
+    A_norm = 1 # !!! Remove this once the norm is calculated correctly
 
-    # U, Lambda = sketchy_CGAL(A_0, A, c, n, d, alpha=n, A_norm=A_norm, R=10, T=10000)
+
+    U, Lambda, objective, Omega, z, y, S = run_solver(A_0, A, c, 2*d + 1, 4*d, alpha=n, A_norm=A_norm, R=1, T=10000, trace_mode='min', max_restarts=100)
+
+    # print(Lambda.diagonal())
+
+
+    # Objective Value Using the Sketch
+    X_hat = U @ Lambda @ U.conj().T
+    print(X_hat.diagonal())
+    calculated_cut = ( X_hat.conj().T @ -A_0 ).trace()
+    print("Calculated Objective:", calculated_cut)
+
+    # # True Max Cut Objective
+    # x = np.zeros(n)
+    # x[range(0,n,2)] = 1
+    # x[range(1,n,2)] = -1
+    # x = x.reshape((-1, 1))
+    # max_cut = ( (x @ x.T) @ -C ).trace()
+    # print("Max Cut Objective:", max_cut)
+
+    # # Objective Residual as definied in the paper
+    # obj_residual = abs( calculated_cut - max_cut ) / ( 1 + abs(max_cut) )
+    # print("Objective Residual:", obj_residual)

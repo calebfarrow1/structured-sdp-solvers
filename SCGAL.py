@@ -16,7 +16,7 @@ def primitive1(C_data, v):
     """
     return  C_data @ v
 
-def primitive2(A_data, z, u):
+def primitive2(A_data, z, u, A_shape):
     """
         A_data: data
             Some encoding of the tensor A.
@@ -25,7 +25,7 @@ def primitive2(A_data, z, u):
         u: vector
             Vector to multiply with A*z.
     """
-    v = np.zeros(len(A_data))
+    v = np.zeros(A_shape(A_data), dtype=complex)
     for i, a in enumerate(A_data):
         v += z[i] * (a @ u)
     return v
@@ -37,7 +37,7 @@ def primitive3(A_data, u):
         u: vector
             Vector to apply the tensor A to.
     """
-    v = np.zeros(len(A_data))
+    v = np.zeros(len(A_data), dtype=complex)
     for i, a in enumerate(A_data):
         v[i] = ( (a @ u) @ u.conj().T ).trace()
     return v
@@ -58,6 +58,8 @@ def M_mv_other(M_data, v):
     """
     return M_data @ v
 
+def A_shape(A_data):
+    return A_data[0].shape[0]
 
 def M_shape(M_data):
     """
@@ -67,7 +69,7 @@ def M_shape(M_data):
     [C, A, z] = M_data
     return C.shape
 
-def M_mv(M_data, v):
+def M_mv(M_data, v, A_shape):
     """
         M_data: data
             Some encoding of the matrix M.
@@ -75,7 +77,7 @@ def M_mv(M_data, v):
             Vector to multiply with the matrix M.
     """
     [C, A, z] = M_data
-    return primitive1(C, v) + primitive2(A, z, v)
+    return primitive1(C, v) + primitive2(A, z, v, A_shape)
 
 def approx_min_evec(M_data, M_shape, M_mv, q, eps=1e-10):
     """
@@ -97,34 +99,38 @@ def approx_min_evec(M_data, M_shape, M_mv, q, eps=1e-10):
     v0 = v
     rho = np.zeros(min(q, n-1)+1)
     omega = np.zeros(min(q, n-1)+1)
+    # print(omega.shape)
 
+    iter = 0
     for i in range(min(q, n-1)):
-        omega[i+1] = np.real( np.dot( v, M_mv( M_data, v ) ) )
-        v, v_old = M_mv( M_data, v ) - omega[i+1]*v - rho[i]*v_old, v
+        omega[i+1] = np.real( np.dot( v, M_mv( M_data, v, A_shape ) ) )
+        v, v_old = M_mv( M_data, v, A_shape ) - omega[i+1]*v - rho[i]*v_old, v
         rho[i+1] = np.linalg.norm(v) # This is different than what is shown in the paper, we believe the paper has a typo
+        iter = i
         if rho[i+1] < eps:
             break
         v = v / rho[i+1]
 
-    T = diags([rho[1:i+1], omega[1:i+2], rho[1:i+1]], offsets=[-1, 0, 1]).toarray()
+    i = iter
     # print(rho)
     # print(omega)
+    T = diags([rho[1:i+1], omega[1:i+2], rho[1:i+1]], offsets=[-1, 0, 1]).toarray()
     # print(T)
-    _, u = eigsh(T, k=1, which='SM', return_eigenvectors=True)
+    xi, u = eigsh(T, k=1, which='SM', return_eigenvectors=True)
     u = u[:, 0]
     
     v = v0
-    v_sum = np.zeros(n)
+    v_sum = np.zeros(n, dtype=complex)
     v_old = np.zeros(n)
 
     for i in range(min(q, n-1)):
         v_sum += u[i]*v
-        v, v_old = M_mv( M_data, v ) - omega[i+1]*v - rho[i]*v_old, v
+        v, v_old = M_mv( M_data, v, A_shape ) - omega[i+1]*v - rho[i]*v_old, v
         if rho[i+1] < eps:
             break
         v = v / rho[i+1]
 
-    return v_sum
+    return xi, v_sum
 
 def nystrom_sketch_init(n, R):
     """
@@ -173,7 +179,7 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
                  enforce_A_norm=True,
                  normalize_A=(lambda tensor, scalar : [scalar * matrix for matrix in tensor]),
                  normalize_b=(lambda tensor, scalar : scalar * tensor),
-                 do_log=False, log_data=[], logging_function=None):
+                 do_log=False, log_data=[], logging_function=None, trace_mode='eq', max_restarts=0, Omega=None, S=None, z=None, y=None, eps=10e-10):
     """
         C: matrix
             Matrix C.
@@ -197,10 +203,6 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
     # Add code to Scale Problem data???
 
     beta0 = 1
-    Omega, S = nystrom_sketch_init(n, R)
-
-    z = np.zeros(d)
-    y = np.zeros(d)
 
     if do_log:
         epoc = time.time()
@@ -212,10 +214,14 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
     for t in range(1, T+1):
         beta = beta0*np.sqrt(t+1)
         eta = 2/(t+1)
-        q = int( ( t**(1/4) )*np.log(n) )
+        q = math.ceil( ( t**(1/4) )*np.log(n + 0.1) )
 
-        v = approx_min_evec([C, A, y + beta*(z - b)], M_shape, M_mv, q, eps=1e-10)
+        xi, v = approx_min_evec([C, A, y + beta*(z - b)], M_shape, M_mv, q, eps=1e-10)
         v = v.reshape((-1, 1)) # So transpose works
+
+        if trace_mode != 'eq':
+            if xi >= 0:
+                v = np.zeros_like(v)
 
         z = (1 - eta)*z + eta*primitive3(A, np.sqrt(alpha)*v)
         gamma = 4*(alpha**2)*beta0*A_norm**2 / ( ( (t+1)**(3/2) )*( np.linalg.norm(z - b, ord=2)**2 ) )
@@ -228,10 +234,78 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
     
     U, Lambda = nystrom_sketch_recontruct(n, S, Omega)
         
-    if enforce_trace:
+    if enforce_trace and trace_mode == 'eq': # Only allow enforcement of trace if equality of trace is required
         Lambda += (alpha - Lambda.trace()) * np.eye(R) / R
 
-    return U, Lambda
+    return U, Lambda, Omega, z, y, S
+
+def run_solver(C, A, b, n, d, alpha, A_norm, R, T,
+                 enforce_trace=True,
+                 enforce_A_norm=True,
+                 normalize_A=(lambda tensor, scalar : [scalar * matrix for matrix in tensor]),
+                 normalize_b=(lambda tensor, scalar : scalar * tensor),
+                 do_log=False, log_data=[], logging_function=None, trace_mode='eq', max_restarts=0, hot_start=False, 
+                 Omega=None, S=None, z=None, y=None, eps=1e-10):
+    """
+        Wrapper function to run the sketchy CGAL solver.
+    """
+    
+    if not hot_start:
+        Omega, S = nystrom_sketch_init(n, R)
+
+        z = np.zeros(d)
+        y = np.zeros(d)
+
+    if trace_mode == 'min':
+        iter = 0
+        objective = None
+        prev_objective = None
+        while iter <= max_restarts:
+            Omega, S = nystrom_sketch_init(n, R)
+            z = np.zeros(d)
+            y = np.zeros(d)
+            iter += 1
+            U, Lambda, Omega, z, y, S = sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
+                        enforce_trace=enforce_trace,
+                        enforce_A_norm=enforce_A_norm,
+                        normalize_A=normalize_A,
+                        normalize_b=normalize_b,
+                        do_log=do_log,
+                        log_data=log_data,
+                        logging_function=logging_function,
+                        trace_mode=trace_mode,
+                        max_restarts=max_restarts,
+                        Omega=Omega, S=S, z=z, y=y, eps=eps)
+            
+            if objective is not None:
+                prev_objective = objective
+
+            objective = ( (U.conj().T @ C.conj().T @ U) @ Lambda).trace()
+
+            print(iter-1, objective)
+
+            if prev_objective is not None and abs(objective - prev_objective) < eps:
+                break
+            else:
+                alpha *= 2
+    else:
+        U, Lambda, Omega, z, y, S = sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
+            enforce_trace=enforce_trace,
+            enforce_A_norm=enforce_A_norm,
+            normalize_A=normalize_A,
+            normalize_b=normalize_b,
+            do_log=do_log,
+            log_data=log_data,
+            logging_function=logging_function,
+            trace_mode=trace_mode,
+            max_restarts=max_restarts,
+            Omega=Omega, S=S, z=z, y=y, eps=eps)
+        
+        objective = ( (U.conj().T @ C.conj().T @ U) @ Lambda).trace()
+
+
+    return U, Lambda, objective, Omega, z, y, S
+
 
 if __name__ == "__main__":
     # Test sketchy CGAL
@@ -270,7 +344,10 @@ if __name__ == "__main__":
         x = np.zeros(n)
         x[i] = 1
         Xi = diags(x)
-        Y[i,:] = primitive3(A, Xi)
+        v = np.zeros(len(A))
+        for i, a in enumerate(A):
+            v[i] = (a @ Xi ).trace()
+        Y[i,:] = v
 
     A_norm = np.linalg.norm(Y, ord=2)
 
@@ -278,7 +355,7 @@ if __name__ == "__main__":
 
 
 
-    U, Lambda = sketchy_CGAL(C, A, b, n, d, alpha=n, A_norm=A_norm, R=10, T=10000)
+    U, Lambda, objective, Omega, z, y, S = run_solver(C, A, b, n, d, alpha=n, A_norm=A_norm, R=10, T=100)
 
     print(Lambda.diagonal())
 
@@ -326,7 +403,7 @@ if __name__ == "__main__":
     # q = 100
     # eps = 1e-10
 
-    # v = approx_min_evec(M_data, M_shape_other, M_mv_other, q, eps)
+    # xi, v = approx_min_evec(M_data, M_shape_other, M_mv_other, q, eps)
     # print("Approximate minimum eigenvector:", v)
 
     # xi, u = eigsh(M_data, k=1, which='SM', return_eigenvectors=True)
@@ -335,7 +412,7 @@ if __name__ == "__main__":
     # print("Exact minimum eigenvector:", u)
 
     # print(abs( (v.T @ M_data @ v)  / np.dot( v, v ) ))
-    # print("Error:", abs( np.real( np.dot( v, M_mv( M_data, v ) ) / np.dot( v, v ) ) - xi) )
+    # print("Error:", abs( np.real( np.dot( v, M_mv( M_data, v, A_shape ) ) / np.dot( v, v ) ) - xi) )
     # # print(M_data)
 
     # ## Test Nystrom sketch
