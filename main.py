@@ -4,7 +4,7 @@ import numpy as np
 from scipy.linalg import toeplitz
 from circulant_embedding import faster_A
 from scipy.linalg import circulant
-from scipy.sparse import diags
+from scipy.sparse import diags, csr_array
 from SCGAL import run_solver
 
 if __name__ == '__main__':
@@ -94,16 +94,17 @@ if __name__ == '__main__':
     Y = np.zeros((2*d + 1, len(A)), dtype=complex)
 
     for i in range(2*d + 1):
-        x = np.zeros(2*d + 1)
-        x[i] = 1
-        Xi = diags(x)
+        row = np.array([0])
+        col = np.array([i])
+        data = np.array([1])
+        Xi = csr_array((data, (row, col)), shape=(2*d + 1, 2*d + 1))
         v = np.zeros(len(A), dtype=complex)
         for k, a in enumerate(A):
             v[k] = ( a.conj().T @ Xi ).trace()
         Y[i,:] = v
 
-    # A_norm = np.linalg.norm(Y, ord=2)
-    A_norm = 1 # !!! Remove this once the norm is calculated correctly
+    A_norm = np.linalg.norm(Y, ord=2)
+    # A_norm = 1 # !!! Remove this once the norm is calculated correctly
 
 
     U, Lambda, objective, Omega, z, y, S = run_solver(A_0, A, c, 2*d + 1, 4*d, alpha=n, A_norm=A_norm, R=1, T=10000, trace_mode='min', max_restarts=100)

@@ -121,7 +121,7 @@ def approx_min_evec(M_data, M_shape, M_mv, q, eps=1e-10):
     
     v = v0
     v_sum = np.zeros(n, dtype=complex)
-    v_old = np.zeros(n)
+    v_old = np.zeros(n, dtype=complex)
 
     for i in range(min(q, n-1)):
         v_sum += u[i]*v
@@ -224,7 +224,7 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
                 v = np.zeros_like(v)
 
         z = (1 - eta)*z + eta*primitive3(A, np.sqrt(alpha)*v)
-        gamma = 4*(alpha**2)*beta0*A_norm**2 / ( ( (t+1)**(3/2) )*( np.linalg.norm(z - b, ord=2)**2 ) )
+        gamma = min( beta0, 4*(alpha**2)*beta0*A_norm**2 / ( ( (t+1)**(3/2) )*( np.linalg.norm(z - b, ord=2)**2 ) ) )
         y = y + gamma*(z - b)
         S = nystrom_sketch_rank_one_update(np.sqrt(alpha)*v, eta, S, Omega)
         if do_log:
