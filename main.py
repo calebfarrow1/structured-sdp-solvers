@@ -42,6 +42,7 @@ if __name__ == '__main__':
         A.append(mx)
 
     c = np.random.normal(size=len(A))
+    print("C Norm", np.linalg.norm(c, ord=1))
     # c = np.array([0.537667139546100, 1.83388501459509, -2.25884686100365, 0.862173320368121])
     
     status, optimal_value, optimal_vars = solve_LMI(A_0, A, c, verbose=False)
@@ -116,7 +117,10 @@ if __name__ == '__main__':
     # A_norm = 2 # !!! Remove this once the norm is calculated correctly
 
 
-    U, Lambda, objective, Omega, z, y, S = run_solver(A_0, A, c, 2*d + 1, 4*d, alpha=n, A_norm=A_norm, R=1, T=10000, trace_mode='min', max_restarts=100)
+    U, Lambda, objective, Omega, z, y, S = run_solver(A_0, A, c, 2*d + 1, 4*d,
+                                                      alpha=np.linalg.norm(c,ord=1), A_norm=A_norm,
+                                                      R=1, T=5000,
+                                                      trace_mode='min', max_restarts=3)
 
     # print(Lambda.diagonal())
 

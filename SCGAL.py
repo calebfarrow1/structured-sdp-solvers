@@ -67,8 +67,8 @@ def M_shape(M_data):
         M_data: data
             Some encoding of the matrix M.
     """
-    [C, A, z] = M_data
-    return C.shape
+    #[C, A, z] = M_data
+    return M_data[0].shape
 
 def M_mv(M_data, v, A_shape):
     """
@@ -77,8 +77,8 @@ def M_mv(M_data, v, A_shape):
         v: vector
             Vector to multiply with the matrix M.
     """
-    [C, A, z] = M_data
-    return primitive1(C, v) + primitive2(A, z, v, A_shape)
+    #[C, A, z] = M_data
+    return primitive1(M_data[0], v) + primitive2(M_data[1], M_data[2], v, A_shape)
 
 def approx_min_evec(M_data, M_shape, M_mv, q, eps=1e-10):
     """
@@ -104,8 +104,9 @@ def approx_min_evec(M_data, M_shape, M_mv, q, eps=1e-10):
 
     iter = 0
     for i in range(min(q, n-1)):
-        omega[i+1] = np.real(  v.conj().T @ M_mv( M_data, v, A_shape ) )
-        v, v_old = M_mv( M_data, v, A_shape ) - omega[i+1]*v - rho[i]*v_old, v
+        mmv = M_mv( M_data, v, A_shape )
+        omega[i+1] = np.real(  v.conj().T @ mmv )
+        v, v_old = mmv - omega[i+1]*v - rho[i]*v_old, v
         rho[i+1] = np.linalg.norm(v) # This is different than what is shown in the paper, we believe the paper has a typo
         iter = i
         if rho[i+1] < eps:
@@ -178,7 +179,7 @@ def nystrom_sketch_recontruct(n, S, Omega):
 
 def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
                  enforce_trace=True,
-                 do_log=False, log_data=[], logging_function=None, trace_mode='eq', Omega=None, S=None, z=None, y=None, eig_eps=10e-10):
+                 do_log=False, log_data=[], logging_function=None, trace_mode='eq', Omega=None, S=None, z=None, y=None, eig_eps=1e-10):
     """
         C: matrix
             Matrix C.
@@ -199,7 +200,6 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
         T: int
             Number of iterations.
     """
-    # Add code to Scale Problem data???
 
     beta0 = 1
 
@@ -209,9 +209,9 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
     TRACE = 0
 
     for t in range(1, T+1):
-        beta = beta0*np.sqrt(t+1)
-        eta = 2/(t+1)
-        q = math.ceil( ( t**(1/4) )*np.log(n + 0.1) )
+        beta = beta0 * np.sqrt(t + 1)
+        eta = 2 / (t + 1)
+        q = math.ceil( ( t**(0.25) )*np.log(n + 0.1) )
 
         xi, v = approx_min_evec([C, A, y + beta*(z - b)], M_shape, M_mv, q, eps=eig_eps)
         v = v.reshape((-1, 1)) # So transpose works
@@ -221,14 +221,15 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
             if xi > 0:
                 temp_alpha = 0
                 # v = np.zeros_like(v)
+        v *= np.sqrt(temp_alpha)
 
         TRACE = (1-eta)*TRACE + eta*temp_alpha
 
-        z = (1 - eta)*z + eta*primitive3(A, np.sqrt(temp_alpha)*v)
+        z = (1 - eta)*z + eta*primitive3(A, v)
         gamma = min( beta0, 4*( temp_alpha**2 )*beta0*( A_norm**2 ) / ( ( (t+1)**(3/2) )*( np.linalg.norm(z - b, ord=2)**2 ) ) )
         # gamma = min( beta0, 16*( temp_alpha**2 )*beta0*( A_norm**2 ) / ( ( (t+1)*(t+2)**(1/2) )*( np.linalg.norm(z - b, ord=2)**2 ) ) ) # This is technicall what they are doing
         y = y + gamma*(z - b)
-        S = nystrom_sketch_rank_one_update(np.sqrt(temp_alpha)*v, eta, S, Omega)
+        S = nystrom_sketch_rank_one_update(v, eta, S, Omega)
         if do_log:
             log_data.append(
                 logging_function(beta, eta, q, v, z, gamma, y, S, Omega, epoc)
@@ -305,11 +306,14 @@ def run_solver(C, A, b, n, d, alpha, A_norm, R, T,
 
             objective = np.real( ( (U.conj().T @ C.conj().T @ U) @ Lambda).trace()*objective_scaling_factor )
 
-            print(iter-1, objective)
+            print(iter-1, objective, y)
 
             if prev_objective is not None and abs(objective - prev_objective) / (1 + max( abs(objective), abs(prev_objective) )) < iter_eps:
                 break
             else:
+                S *= 0.5
+                z *= 0.5
+                T = math.ceil(T * 0.5)
                 if enforce_trace_normalization:
                     x_scaling_factor *= 2
                     objective_scaling_factor *= 2
