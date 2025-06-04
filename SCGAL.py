@@ -3,6 +3,7 @@ from scipy.sparse import diags
 import numpy as np
 import time
 import math
+import scipy as sp
 # import networkx as nx
 
 np.set_printoptions(precision=3, suppress=True)
@@ -103,7 +104,7 @@ def approx_min_evec(M_data, M_shape, M_mv, q, eps=1e-10):
 
     iter = 0
     for i in range(min(q, n-1)):
-        omega[i+1] = np.real( np.dot( v, M_mv( M_data, v, A_shape ) ) )
+        omega[i+1] = np.real(  v.conj().T @ M_mv( M_data, v, A_shape ) )
         v, v_old = M_mv( M_data, v, A_shape ) - omega[i+1]*v - rho[i]*v_old, v
         rho[i+1] = np.linalg.norm(v) # This is different than what is shown in the paper, we believe the paper has a typo
         iter = i
@@ -177,10 +178,7 @@ def nystrom_sketch_recontruct(n, S, Omega):
 
 def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
                  enforce_trace=True,
-                 enforce_A_norm=True,
-                 normalize_A=(lambda tensor, scalar : [scalar * matrix for matrix in tensor]),
-                 normalize_b=(lambda tensor, scalar : scalar * tensor),
-                 do_log=False, log_data=[], logging_function=None, trace_mode='eq', max_restarts=0, Omega=None, S=None, z=None, y=None, eps=10e-10):
+                 do_log=False, log_data=[], logging_function=None, trace_mode='eq', Omega=None, S=None, z=None, y=None, eig_eps=10e-10):
     """
         C: matrix
             Matrix C.
@@ -208,10 +206,6 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
     if do_log:
         epoc = time.time()
 
-    if enforce_A_norm:
-        A = normalize_A(A, 1/A_norm)
-        b = normalize_b(b, 1/A_norm)
-
     TRACE = 0
 
     for t in range(1, T+1):
@@ -219,12 +213,12 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
         eta = 2/(t+1)
         q = math.ceil( ( t**(1/4) )*np.log(n + 0.1) )
 
-        xi, v = approx_min_evec([C, A, y + beta*(z - b)], M_shape, M_mv, q, eps=1e-10)
+        xi, v = approx_min_evec([C, A, y + beta*(z - b)], M_shape, M_mv, q, eps=eig_eps)
         v = v.reshape((-1, 1)) # So transpose works
 
         temp_alpha = alpha
         if trace_mode != 'eq':
-            if xi >= 0:
+            if xi > 0:
                 temp_alpha = 0
                 # v = np.zeros_like(v)
 
@@ -254,13 +248,34 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
 def run_solver(C, A, b, n, d, alpha, A_norm, R, T,
                  enforce_trace=True,
                  enforce_A_norm=True,
+                 enforce_trace_normalization=True,
+                 enforce_C_normalization=True,
                  normalize_A=(lambda tensor, scalar : [scalar * matrix for matrix in tensor]),
                  normalize_b=(lambda tensor, scalar : scalar * tensor),
                  do_log=False, log_data=[], logging_function=None, trace_mode='eq', max_restarts=0, hot_start=False, 
-                 Omega=None, S=None, z=None, y=None, eps=1e-10):
+                 Omega=None, S=None, z=None, y=None, eig_eps=1e-10, iter_eps=1e-2):
     """
         Wrapper function to run the sketchy CGAL solver.
     """
+
+    x_scaling_factor = 1
+    objective_scaling_factor = 1
+
+    if enforce_A_norm:
+        A = normalize_A(A, 1/A_norm)
+        b = normalize_b(b, 1/A_norm)
+        A_norm = 1
+
+    if enforce_trace_normalization:
+        x_scaling_factor *= alpha
+        objective_scaling_factor *= alpha
+        b /= alpha
+        alpha = 1
+
+    if enforce_C_normalization:
+        C_norm = sp.sparse.linalg.norm(C, ord='fro')
+        C = C / C_norm
+        objective_scaling_factor *= C_norm
     
     if not hot_start:
         Omega, S = nystrom_sketch_init(n, R)
@@ -279,42 +294,40 @@ def run_solver(C, A, b, n, d, alpha, A_norm, R, T,
             iter += 1
             U, Lambda, Omega, z, y, S = sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
                         enforce_trace=enforce_trace,
-                        enforce_A_norm=enforce_A_norm,
-                        normalize_A=normalize_A,
-                        normalize_b=normalize_b,
                         do_log=do_log,
                         log_data=log_data,
                         logging_function=logging_function,
                         trace_mode=trace_mode,
-                        max_restarts=max_restarts,
-                        Omega=Omega, S=S, z=z, y=y, eps=eps)
+                        Omega=Omega, S=S, z=z, y=y, eig_eps=eig_eps)
             
             if objective is not None:
                 prev_objective = objective
 
-            objective = ( (U.conj().T @ C.conj().T @ U) @ Lambda).trace()
+            objective = np.real( ( (U.conj().T @ C.conj().T @ U) @ Lambda).trace()*objective_scaling_factor )
 
             print(iter-1, objective)
 
-            if prev_objective is not None and abs(objective - prev_objective) < eps:
+            if prev_objective is not None and abs(objective - prev_objective) / (1 + max( abs(objective), abs(prev_objective) )) < iter_eps:
                 break
             else:
-                alpha *= 2
+                if enforce_trace_normalization:
+                    x_scaling_factor *= 2
+                    objective_scaling_factor *= 2
+                    b /= 2
+                else:
+                    alpha *= 2
     else:
         U, Lambda, Omega, z, y, S = sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
             enforce_trace=enforce_trace,
-            enforce_A_norm=enforce_A_norm,
-            normalize_A=normalize_A,
-            normalize_b=normalize_b,
             do_log=do_log,
             log_data=log_data,
             logging_function=logging_function,
             trace_mode=trace_mode,
-            max_restarts=max_restarts,
-            Omega=Omega, S=S, z=z, y=y, eps=eps)
+            Omega=Omega, S=S, z=z, y=y, eig_eps=eig_eps)
         
-        objective = ( (U.conj().T @ C.conj().T @ U) @ Lambda).trace()
+        objective = np.real( ( (U.conj().T @ C.conj().T @ U) @ Lambda).trace()*objective_scaling_factor )
 
+    Lambda *= x_scaling_factor
 
     return U, Lambda, objective, Omega, z, y, S
 

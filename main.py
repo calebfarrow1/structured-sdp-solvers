@@ -41,8 +41,8 @@ if __name__ == '__main__':
         mx = toeplitz(col)
         A.append(mx)
 
-    # c = np.random.normal(size=len(A))
-    c = np.array([0.537667139546100, 1.83388501459509, -2.25884686100365, 0.862173320368121])
+    c = np.random.normal(size=len(A))
+    # c = np.array([0.537667139546100, 1.83388501459509, -2.25884686100365, 0.862173320368121])
     
     status, optimal_value, optimal_vars = solve_LMI(A_0, A, c, verbose=False)
     
@@ -92,20 +92,28 @@ if __name__ == '__main__':
         mx = diags([-1j*diag, 1j*diag],offsets=[-m,m])
         A.append(mx)
 
-    Y = np.zeros((2*d + 1, len(A)), dtype=complex)
+    # Y = np.zeros((2*d + 1, len(A)), dtype=complex)
 
-    for i in range(2*d + 1):
-        row = np.array([0])
-        col = np.array([i])
-        data = np.array([1])
-        Xi = csr_array((data, (row, col)), shape=(2*d + 1, 2*d + 1))
-        v = np.zeros(len(A), dtype=complex)
-        for k, a in enumerate(A):
-            v[k] = ( a.conj().T @ Xi ).trace()
-        Y[i,:] = v
+    # for i in range(2*d + 1):
+    #     row = np.array([0])
+    #     col = np.array([i])
+    #     data = np.array([1])
+    #     Xi = csr_array((data, (row, col)), shape=(2*d + 1, 2*d + 1))
+    #     v = np.zeros(len(A), dtype=complex)
+    #     for k, a in enumerate(A):
+    #         v[k] = ( a.conj().T @ Xi ).trace()
+    #     Y[i,:] = v
+
+    Y = np.zeros((len(A), ( 2*d + 1 )**2), dtype=complex)
+    
+    for i in range(len(A)):
+        mx = np.matrix.flatten(A[i].toarray())
+        Y[i, :] = mx
+
+    
 
     A_norm = np.linalg.norm(Y, ord=2)
-    # A_norm = 1 # !!! Remove this once the norm is calculated correctly
+    # A_norm = 2 # !!! Remove this once the norm is calculated correctly
 
 
     U, Lambda, objective, Omega, z, y, S = run_solver(A_0, A, c, 2*d + 1, 4*d, alpha=n, A_norm=A_norm, R=1, T=10000, trace_mode='min', max_restarts=100)
@@ -116,7 +124,7 @@ if __name__ == '__main__':
     # Objective Value Using the Sketch
     X_hat = U @ Lambda @ U.conj().T
     print(X_hat.diagonal())
-    calculated_cut = ( X_hat.conj().T @ A_0 ).trace()
+    calculated_cut = np.real( ( X_hat.conj().T @ A_0 ).trace() )
     print("Calculated Objective:", calculated_cut)
 
     # # True Max Cut Objective
