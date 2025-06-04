@@ -41,7 +41,8 @@ if __name__ == '__main__':
         mx = toeplitz(col)
         A.append(mx)
 
-    c = np.random.normal(size=len(A))
+    # c = np.random.normal(size=len(A))
+    c = np.array([0.537667139546100, 1.83388501459509, -2.25884686100365, 0.862173320368121])
     
     status, optimal_value, optimal_vars = solve_LMI(A_0, A, c, verbose=False)
     
@@ -115,7 +116,7 @@ if __name__ == '__main__':
     # Objective Value Using the Sketch
     X_hat = U @ Lambda @ U.conj().T
     print(X_hat.diagonal())
-    calculated_cut = ( X_hat.conj().T @ -A_0 ).trace()
+    calculated_cut = ( X_hat.conj().T @ A_0 ).trace()
     print("Calculated Objective:", calculated_cut)
 
     # # True Max Cut Objective

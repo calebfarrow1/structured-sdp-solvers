@@ -39,7 +39,7 @@ def primitive3(A_data, u):
     """
     v = np.zeros(len(A_data), dtype=complex)
     for i, a in enumerate(A_data):
-        v[i] = ( (a @ u) @ u.conj().T ).trace()
+        v[i] = ( u.conj().T @ (a @ u) ).trace()
     return v
 
 def M_shape_other(M_data):
@@ -116,8 +116,9 @@ def approx_min_evec(M_data, M_shape, M_mv, q, eps=1e-10):
     # print(omega)
     T = diags([rho[1:i+1], omega[1:i+2], rho[1:i+1]], offsets=[-1, 0, 1]).toarray()
     # print(T)
-    xi, u = eigsh(T, k=1, which='SM', return_eigenvectors=True)
+    xi, u = eigsh(T, k=1, which='SA', return_eigenvectors=True) # We think the paper is using SA not SM which we thought originally
     u = u[:, 0]
+    xi = xi[0]
     
     v = v0
     v_sum = np.zeros(n, dtype=complex)
@@ -211,6 +212,8 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
         A = normalize_A(A, 1/A_norm)
         b = normalize_b(b, 1/A_norm)
 
+    TRACE = 0
+
     for t in range(1, T+1):
         beta = beta0*np.sqrt(t+1)
         eta = 2/(t+1)
@@ -219,14 +222,19 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
         xi, v = approx_min_evec([C, A, y + beta*(z - b)], M_shape, M_mv, q, eps=1e-10)
         v = v.reshape((-1, 1)) # So transpose works
 
+        temp_alpha = alpha
         if trace_mode != 'eq':
             if xi >= 0:
-                v = np.zeros_like(v)
+                temp_alpha = 0
+                # v = np.zeros_like(v)
 
-        z = (1 - eta)*z + eta*primitive3(A, np.sqrt(alpha)*v)
-        gamma = min( beta0, 4*(alpha**2)*beta0*A_norm**2 / ( ( (t+1)**(3/2) )*( np.linalg.norm(z - b, ord=2)**2 ) ) )
+        TRACE = (1-eta)*TRACE + eta*temp_alpha
+
+        z = (1 - eta)*z + eta*primitive3(A, np.sqrt(temp_alpha)*v)
+        gamma = min( beta0, 4*( temp_alpha**2 )*beta0*( A_norm**2 ) / ( ( (t+1)**(3/2) )*( np.linalg.norm(z - b, ord=2)**2 ) ) )
+        # gamma = min( beta0, 16*( temp_alpha**2 )*beta0*( A_norm**2 ) / ( ( (t+1)*(t+2)**(1/2) )*( np.linalg.norm(z - b, ord=2)**2 ) ) ) # This is technicall what they are doing
         y = y + gamma*(z - b)
-        S = nystrom_sketch_rank_one_update(np.sqrt(alpha)*v, eta, S, Omega)
+        S = nystrom_sketch_rank_one_update(np.sqrt(temp_alpha)*v, eta, S, Omega)
         if do_log:
             log_data.append(
                 logging_function(beta, eta, q, v, z, gamma, y, S, Omega, epoc)
@@ -234,8 +242,12 @@ def sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
     
     U, Lambda = nystrom_sketch_recontruct(n, S, Omega)
         
-    if enforce_trace and trace_mode == 'eq': # Only allow enforcement of trace if equality of trace is required
-        Lambda += (alpha - Lambda.trace()) * np.eye(R) / R
+    # if enforce_trace and trace_mode == 'eq': # Only allow enforcement of trace if equality of trace is required
+    if enforce_trace:
+        # Lambda += (alpha - Lambda.trace()) * np.eye(R) / R
+        # print(TRACE)
+        # print(Lambda.trace())
+        Lambda += (TRACE - Lambda.trace()) * np.eye(R) / R
 
     return U, Lambda, Omega, z, y, S
 
@@ -261,9 +273,9 @@ def run_solver(C, A, b, n, d, alpha, A_norm, R, T,
         objective = None
         prev_objective = None
         while iter <= max_restarts:
-            Omega, S = nystrom_sketch_init(n, R)
-            z = np.zeros(d)
-            y = np.zeros(d)
+            # Omega, S = nystrom_sketch_init(n, R) # Should most likely remove this line eventually
+            # z = np.zeros(d) # Should most likely remove this line eventually
+            # y = np.zeros(d) # Should most likely remove this line eventually
             iter += 1
             U, Lambda, Omega, z, y, S = sketchy_CGAL(C, A, b, n, d, alpha, A_norm, R, T,
                         enforce_trace=enforce_trace,
@@ -308,131 +320,131 @@ def run_solver(C, A, b, n, d, alpha, A_norm, R, T,
 
 
 if __name__ == "__main__":
-    # Test sketchy CGAL
-    n = 100
-    A = []
+    # # Test sketchy CGAL
+    # n = 100
+    # A = []
 
 
-    # ## Original Max Cut A and C that Aidan mentioned
-    # a0 = np.zeros(n)
-    # a0[0] = 1
-    # A.append(diags(a0))
+    # # ## Original Max Cut A and C that Aidan mentioned
+    # # a0 = np.zeros(n)
+    # # a0[0] = 1
+    # # A.append(diags(a0))
 
-    # for i in range(n-1):
+    # # for i in range(n-1):
+    # #     ai = np.zeros(n)
+    # #     ai[i] = 1
+    # #     ai[i+1] = -1
+    # #     A.append(diags(ai))
+
+    # # C = -(1/2)*diags([np.ones(n-1), np.ones(n-1), 1, 1], offsets=[-1, 1, -(n-1), n-1])
+
+
+
+    # # ## Max Cut A and C from paper
+    # for i in range(n):
     #     ai = np.zeros(n)
     #     ai[i] = 1
-    #     ai[i+1] = -1
     #     A.append(diags(ai))
 
-    # C = -(1/2)*diags([np.ones(n-1), np.ones(n-1), 1, 1], offsets=[-1, 1, -(n-1), n-1])
+    # C = -diags([2*np.ones(n), -np.ones(n-1), -np.ones(n-1), -1, -1], offsets=[0, -1, 1, -(n-1), n-1]) / math.sqrt(6 * n)
+
+    # d = len(A)
+
+    # Y = np.zeros((n, d))
+
+    # for i in range(d):
+    #     x = np.zeros(n)
+    #     x[i] = 1
+    #     Xi = diags(x)
+    #     v = np.zeros(len(A))
+    #     for i, a in enumerate(A):
+    #         v[i] = (a @ Xi ).trace()
+    #     Y[i,:] = v
+
+    # A_norm = np.linalg.norm(Y, ord=2)
+
+    # b = np.ones(n)
 
 
 
-    # ## Max Cut A and C from paper
-    for i in range(n):
-        ai = np.zeros(n)
-        ai[i] = 1
-        A.append(diags(ai))
+    # U, Lambda, objective, Omega, z, y, S = run_solver(C, A, b, n, d, alpha=n, A_norm=A_norm, R=10, T=100)
 
-    C = -diags([2*np.ones(n), -np.ones(n-1), -np.ones(n-1), -1, -1], offsets=[0, -1, 1, -(n-1), n-1]) / math.sqrt(6 * n)
-
-    d = len(A)
-
-    Y = np.zeros((n, d))
-
-    for i in range(d):
-        x = np.zeros(n)
-        x[i] = 1
-        Xi = diags(x)
-        v = np.zeros(len(A))
-        for i, a in enumerate(A):
-            v[i] = (a @ Xi ).trace()
-        Y[i,:] = v
-
-    A_norm = np.linalg.norm(Y, ord=2)
-
-    b = np.ones(n)
+    # print(Lambda.diagonal())
 
 
+    # # Objective Value Using the Sketch
+    # X_hat = U @ Lambda @ U.conj().T
+    # print(X_hat.diagonal())
+    # calculated_cut = ( X_hat.conj().T @ -C ).trace()
+    # print("Calculated Objective:", calculated_cut)
 
-    U, Lambda, objective, Omega, z, y, S = run_solver(C, A, b, n, d, alpha=n, A_norm=A_norm, R=10, T=100)
+    # # True Max Cut Objective
+    # x = np.zeros(n)
+    # x[range(0,n,2)] = 1
+    # x[range(1,n,2)] = -1
+    # x = x.reshape((-1, 1))
+    # max_cut = ( (x @ x.T) @ -C ).trace()
+    # print("Max Cut Objective:", max_cut)
 
-    print(Lambda.diagonal())
-
-
-    # Objective Value Using the Sketch
-    X_hat = U @ Lambda @ U.conj().T
-    print(X_hat.diagonal())
-    calculated_cut = ( X_hat.conj().T @ -C ).trace()
-    print("Calculated Objective:", calculated_cut)
-
-    # True Max Cut Objective
-    x = np.zeros(n)
-    x[range(0,n,2)] = 1
-    x[range(1,n,2)] = -1
-    x = x.reshape((-1, 1))
-    max_cut = ( (x @ x.T) @ -C ).trace()
-    print("Max Cut Objective:", max_cut)
-
-    # Objective Residual as definied in the paper
-    obj_residual = abs( calculated_cut - max_cut ) / ( 1 + abs(max_cut) )
-    print("Objective Residual:", obj_residual)
+    # # Objective Residual as definied in the paper
+    # obj_residual = abs( calculated_cut - max_cut ) / ( 1 + abs(max_cut) )
+    # print("Objective Residual:", obj_residual)
 
 
-    # ## Test cut_size (need to import networkx)
-    # cycle = nx.cycle_graph(n)
-    # cuts = np.sign(U)
-    # for i in range(np.shape(cuts)[1]):
-    #     S = set(np.asarray(cuts[:,i] == -1).nonzero()[0])
-    #     T = set(np.asarray(cuts[:,i] == 1).nonzero()[0])
-    #     print(nx.cut_size(cycle, S, T))
+    # # ## Test cut_size (need to import networkx)
+    # # cycle = nx.cycle_graph(n)
+    # # cuts = np.sign(U)
+    # # for i in range(np.shape(cuts)[1]):
+    # #     S = set(np.asarray(cuts[:,i] == -1).nonzero()[0])
+    # #     T = set(np.asarray(cuts[:,i] == 1).nonzero()[0])
+    # #     print(nx.cut_size(cycle, S, T))
 
-    # S = set(range(0,n+1,2))
-    # T = set(range(1,n+1,2))
-    # print(nx.cut_size(cycle, S, T))
+    # # S = set(range(0,n+1,2))
+    # # T = set(range(1,n+1,2))
+    # # print(nx.cut_size(cycle, S, T))
                   
 
-    # print(np.sign(U))
-    # print(np.cumsum(np.sign(U), axis=0))
+    # # print(np.sign(U))
+    # # print(np.cumsum(np.sign(U), axis=0))
 
 
-    # ## Test approx_min_evec
-    # M_data = np.random.normal(size=(100, 50))
-    # M_data = M_data @ M_data.T  # Making it symmetric positive definite
+    # # ## Test approx_min_evec
+    # # M_data = np.random.normal(size=(100, 50))
+    # # M_data = M_data @ M_data.T  # Making it symmetric positive definite
     
-    # q = 100
-    # eps = 1e-10
+    # # q = 100
+    # # eps = 1e-10
 
-    # xi, v = approx_min_evec(M_data, M_shape_other, M_mv_other, q, eps)
-    # print("Approximate minimum eigenvector:", v)
+    # # xi, v = approx_min_evec(M_data, M_shape_other, M_mv_other, q, eps)
+    # # print("Approximate minimum eigenvector:", v)
 
-    # xi, u = eigsh(M_data, k=1, which='SM', return_eigenvectors=True)
-    # xi = xi[0]
-    # u = u[:, 0]
-    # print("Exact minimum eigenvector:", u)
+    # # xi, u = eigsh(M_data, k=1, which='SM', return_eigenvectors=True)
+    # # xi = xi[0]
+    # # u = u[:, 0]
+    # # print("Exact minimum eigenvector:", u)
 
-    # print(abs( (v.T @ M_data @ v)  / np.dot( v, v ) ))
-    # print("Error:", abs( np.real( np.dot( v, M_mv( M_data, v, A_shape ) ) / np.dot( v, v ) ) - xi) )
-    # # print(M_data)
+    # # print(abs( (v.T @ M_data @ v)  / np.dot( v, v ) ))
+    # # print("Error:", abs( np.real( np.dot( v, M_mv( M_data, v, A_shape ) ) / np.dot( v, v ) ) - xi) )
+    # # # print(M_data)
 
-    # ## Test Nystrom sketch
-    # n = 100
-    # R = 30
-    # Omega, S = nystrom_sketch_init(n, R)
-    # L = np.eye(n)
+    # # ## Test Nystrom sketch
+    n = 100
+    R = 30
+    Omega, S = nystrom_sketch_init(n, R)
+    L = np.eye(n)
 
-    # ## Test Single Rank One Update
-    # v = L[:, 1]
-    # v = v.reshape((-1, 1))
-    # eta = 1
-    # S = nystrom_sketch_rank_one_update(v, eta, S, Omega)
-    # U, Lambda = nystrom_sketch_recontruct(n, S, Omega)
-    # X_hat = U @ Lambda @ U.conj().T
-    # error = np.linalg.norm(X_hat - v*v.T, ord=2)
-    # print("Error:", error)
+    # # ## Test Single Rank One Update
+    # # v = L[:, 1]
+    # # v = v.reshape((-1, 1))
+    # # eta = 1
+    # # S = nystrom_sketch_rank_one_update(v, eta, S, Omega)
+    # # U, Lambda = nystrom_sketch_recontruct(n, S, Omega)
+    # # X_hat = U @ Lambda @ U.conj().T
+    # # error = np.linalg.norm(X_hat - v*v.T, ord=2)
+    # # print("Error:", error)
 
-    # # Test Reconstruction
-    # U, Lambda = nystrom_sketch_recontruct(n, Omega, Omega)
-    # X_hat = U @ Lambda @ U.conj().T
-    # error = np.linalg.norm(X_hat - L, ord='nuc')
-    # print("Error:", error)
+    # Test Reconstruction
+    U, Lambda = nystrom_sketch_recontruct(n, Omega, Omega)
+    X_hat = U @ Lambda @ U.conj().T
+    error = np.linalg.norm(X_hat - L, ord='nuc')
+    print("Error:", error)
